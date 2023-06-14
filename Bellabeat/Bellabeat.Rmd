@@ -1,0 +1,695 @@
+---
+title: 'Capstone Project: Bellabeat'
+author: "Jennifer Floyd"
+date: "May 2023"
+output:
+  html_document: 
+    toc: true
+    toc_depth: 5
+---
+
+### **Background**
+
+The premise of this project is to focus on one product from a high-tech manufacturer of health-focused products for women: Bellabeat. The goal is to provide recommendations for their marketing strategy based on existing smart device data. My role is a data analyst on the marketing analytics team, and the stakeholders are Urška Sršen: Bellabeat's co-founder and Chief Creative Officer, Sando Mur: Mathematician and Bellabeat's co-founder, and Bellabeat's marketing analytics team.
+
+For this project, I focused on the Bellabeat App to offer insights into a marketing strategy based on smart device data. The Bellabeat App connects with their smart devices to provide awareness of a user's activity, sleep, stress, menstrual cycle, and mindfulness habits.
+
+### **Data Preparation**
+
+#### Basic Information
+
+The primary smart device dataset was provided via CC0: Public Domain made available through [Mobius](https://www.kaggle.com/arashnic). It was collected from responses to a survey by Amazon Mechanical Turk between 04.12.2016-05.12.2016. Users submitted physical activity, heart rate, and sleep information from their FitBit smartwatch. This dataset contains 18 files split into daily, hourly, and minute records.
+
+A second smart device dataset used was provided by CC0: Public Domain, made available through [Zenodo](https://zenodo.org/record/7229547). Participants contributed their data through numerous validated surveys, real-time ecological momentary assessments, and a Fitbit Sense smartwatch. The data was collected in two rounds from 05.24.2021-07.26.2021 and 11.15.2021-01.17.2022. A total of 4 months of data was collected for 71 users (*see limitation note below*). This dataset is indicated by the preceding "lifesnap" file name. This dataset contains 2 files with information split between daily and hourly records.
+
+#### Considerations
+
+-   Primary data limitations:
+    -   The sample size is limited to 33 users over 1 month. This small sample size and duration could impact the accuracy of the recommendations.
+    -   There is no demographic information on the users provided. Bellabeat is marketed specifically for women, so the data would be skewed if any users were male.
+    -   There are 18 files, but I've chosen to focus on 6.
+    -   Totals from the steps/calorie hourly files do not match the totals listed in the steps/calorie daily files (*see Clean Data verification note below*), which may affect the accuracy of the recommendations.
+    -   The daily and hourly heart rate is one file based on seconds, then calculated to days and hours. There is potential for inaccuracies since the data was provided in a different format than the others.
+    -   The dataset is 7 years old, which could impact results for future marketing success.
+-   Secondary data limitations:
+    -   Data includes both men and women in the data. When removing the men, the number of participants is reduced from 71 to 27.
+-   All datasets were recorded at different times of the year and in different years. The change in daily life due to the global pandemic could have altered the secondary datasets when comparing them to the primary dataset, which was pre-pandemic.
+-   I will only use the daily and hourly files to keep a consistent tracking method between all the datasets. I will also use the calorie, steps, sleep, and heart rate for my analysis.
+-   The sleep data is the only data that did not have an hourly measurement in the primary dataset, so I will only be doing a daily analysis on sleep.
+
+#### **Upload**
+
+Installing and loading packages needed for cleaning and analyzing the data:
+
+```{r Install and Load Packages, message=FALSE}
+#Install and Load Packages
+#install.packages("tidyverse")
+#install.packages("janitor")
+#install.packages("dplyr")
+#install.packages("skimr")
+#install.packages("ggplot2")
+#install.packages("collapse")
+#install.packages("patchwork")
+library(tidyverse)
+library(janitor)
+library(dplyr)
+library(skimr)
+library(ggplot2)
+library(collapse)
+library(patchwork)
+
+```
+
+Upload the primary dataset files:
+
+```{r Upload Primary Dataset}
+#Upload Primary Dataset
+daily_calories <- read.csv("dailyCalories_merged.csv")
+daily_steps <- read.csv("dailySteps_merged.csv")
+hourly_calories <- read.csv("hourlyCalories_merged.csv")
+hourly_steps <- read.csv("hourlySteps_merged.csv")
+heartrate <- read.csv("heartrate_seconds_merged.csv")
+daily_sleep <- read.csv("sleepDay_merged.csv")
+
+```
+
+Upload the secondary dataset files:
+
+```{r Upload Secondary Dataset}
+#Upload Secondary Dataset
+lifesnap_daily <- read.csv("Lifesnap/daily_fitbit_sema_df_unprocessed.csv")
+lifesnap_hourly <- read.csv("Lifesnap/hourly_fitbit_sema_df_unprocessed.csv")
+
+```
+
+#### **Clean and Format**
+
+As Bellabeat is marketing specifically to women, the males must be filtered out from the secondary dataset. We will also be selecting only the columns needed for the study. These filtered datasets will be used for the remainder of the analysis.
+
+```{r Filtering Lifesnap Data}
+#Filtering Lifesnap Data
+filtered_lifesnap_daily <- filter(lifesnap_daily, gender == 'FEMALE') %>% 
+  select(id, date, calories, steps, bpm,  minutesAsleep, gender)
+filtered_lifesnap_hourly <- filter(lifesnap_hourly, gender == 'FEMALE') %>% 
+  select(id, date, hour, calories, steps, bpm, gender)
+
+```
+
+Clean the column names:
+
+```{r Clean Names}
+#Clean Names
+daily_calories <- daily_calories %>% clean_names()
+daily_steps <- daily_steps %>% clean_names()
+hourly_calories <- hourly_calories %>% clean_names()
+hourly_steps <- hourly_steps %>% clean_names()
+heartrate <- heartrate %>% clean_names()
+daily_sleep <- daily_sleep %>% clean_names()
+filtered_lifesnap_daily <- filtered_lifesnap_daily %>% clean_names()
+filtered_lifesnap_hourly <- filtered_lifesnap_hourly %>% clean_names()
+
+```
+
+Reformat the secondary dataset's date format to be consistent with the primary dataset's:
+
+```{r Reformat date in secondary}
+#Reformat Date in Secondary
+filtered_lifesnap_daily$date <- strftime(filtered_lifesnap_daily$date, format = "%m/%d/%Y", tz = "GMT")
+filtered_lifesnap_hourly$date <- strftime(filtered_lifesnap_hourly$date, format = "%m/%d/%Y", tz = "GMT")
+
+```
+
+Rename columns for consistency:
+
+```{r Rename columns}
+#Rename Daily Date Columns and Convert to Date Class
+daily_calories = rename(daily_calories, "date" = "activity_day")
+daily_calories$date <- mdy(daily_calories$date)
+daily_calories$date <- strftime(daily_calories$date, "%m/%d/%Y", tz = "GMT")
+daily_steps = rename(daily_steps, "date" = "activity_day")
+daily_steps$date <- mdy(daily_steps$date)
+daily_steps$date <- strftime(daily_steps$date, "%m/%d/%Y", tz = "GMT")
+daily_sleep <- rename(daily_sleep, "minutes_asleep" = "total_minutes_asleep")
+heartrate <- rename(heartrate, "bpm" = "value")
+filtered_lifesnap_daily <- rename(filtered_lifesnap_daily, "minutes_asleep" = "minutes_asleep")
+
+#Split and Rename Hourly Date and Hour Columns
+hourly_calories$ActivityHour2 <- mdy_hms(hourly_calories$activity_hour)
+hourly_calories$date <- strftime(hourly_calories$ActivityHour2, "%m/%d/%Y", tz = "GMT")
+hourly_calories$hour <- parse_number(format(as.POSIXct(hourly_calories$ActivityHour2), format = "%H:%M:%S"))
+hourly_calories <- subset(hourly_calories, select = -ActivityHour2)
+hourly_steps$ActivityHour2 <- mdy_hms(hourly_steps$activity_hour)
+hourly_steps$date <- strftime(hourly_steps$ActivityHour2, "%m/%d/%Y", tz = "GMT")
+hourly_steps$hour <- parse_number(format(as.POSIXct(hourly_steps$ActivityHour2), format = "%H:%M:%S"))
+hourly_steps <- subset(hourly_steps, select = -ActivityHour2)
+daily_sleep$SleepDay2 <- mdy_hms(daily_sleep$sleep_day)
+daily_sleep$date <- strftime(daily_sleep$SleepDay2, "%m/%d/%Y", tz = "GMT")
+daily_sleep <- subset(daily_sleep, select = -SleepDay2)
+heartrate$Time2 <- mdy_hms(heartrate$time)
+heartrate$date <- strftime(heartrate$Time2, "%m/%d/%Y", tz = "GMT")
+heartrate$hour <- parse_number(format(as.POSIXct(heartrate$Time2), format = "%H:%M:%S"))
+heartrate <- subset(heartrate, select = -Time2)
+
+#Convert Heart Rate id to Character
+heartrate$id <- as.character(heartrate$id)
+
+```
+
+Break down primary heart rate data into daily and hourly summarized by id:
+
+```{r Summarize  Primary Data, message=FALSE, warning=FALSE}
+#Summarize Heart Rate Primary Data
+daily_heartrate <- heartrate 
+daily_heartrate <-  daily_heartrate %>% 
+  mutate(bpm = bpm) %>% 
+  bind_rows(daily_heartrate) %>% 
+  group_by(id, date) %>% 
+  summarise(bpm = mean(bpm))
+
+hourly_heartrate <- heartrate
+hourly_heartrate <- hourly_heartrate %>% 
+  mutate(bpm = bpm) %>% 
+  bind_rows(hourly_heartrate) %>% 
+  group_by(id, date, hour) %>% 
+  summarise(bpm = mean(bpm))
+
+```
+
+Add the day of the week to daily files:
+
+```{r Add day of week}
+#Add Day of Week
+daily_calories$day <- mdy(daily_calories$date) 
+daily_calories$day <- weekdays(daily_calories$day, abbreviate = FALSE)
+daily_steps$day <- mdy(daily_steps$date) 
+daily_steps$day <- weekdays(daily_steps$day, abbreviate = FALSE)
+daily_sleep$day <- mdy(daily_sleep$date)
+daily_sleep$day <- weekdays(daily_sleep$day, abbreviate = FALSE)
+daily_heartrate$day <- mdy(daily_heartrate$date)
+daily_heartrate$day <- weekdays(daily_heartrate$day, abbreviate = FALSE)
+filtered_lifesnap_daily$day <- mdy(filtered_lifesnap_daily$date) 
+filtered_lifesnap_daily$day <- weekdays(filtered_lifesnap_daily$day, abbreviate = FALSE)
+
+```
+
+Verify the primary dataset contains the same number of unique users:
+
+```{r Number of primary users, results='hold'}
+#Calculate Number of Primary Users
+length(unique(daily_calories$id))
+length(unique(hourly_steps$id))
+length(unique(daily_steps$id))
+length(unique(hourly_calories$id))
+length(unique(daily_sleep$id))
+length(unique(daily_heartrate$id))
+length(unique(hourly_heartrate$id))
+
+```
+
+Note: Daily sleep and heart rate have fewer users than the other primary datasets. This could affect results. <br> <br>
+
+Verify the filtered secondary dataset contains the same number of unique users:
+
+```{r Number of secondary users, results='hold'}
+#Calculate Number of Seconary Users
+length(unique(filtered_lifesnap_daily$id))
+length(unique(filtered_lifesnap_hourly$id))
+
+```
+
+Verify the primary data hourly dataset totals match the daily datasets:
+
+```{r Verify hourly equals daily totals, message=FALSE}
+#Calculating the Calorie Difference Amounts
+calories_verify <- hourly_calories %>% 
+  select(id, calories, date) %>% 
+  group_by(id, date) %>% 
+  summarise(total_calories=sum(calories)) %>% 
+  left_join(daily_calories) %>% 
+  mutate(calorie_difference = calories - total_calories)
+tibble(calories_verify)
+
+#Calculating the Step Difference Amounts
+steps_verify <- hourly_steps %>%
+  select(id, step_total, date) %>%
+  group_by(id, date) %>%
+  summarise(total_steps = sum(step_total)) %>%
+  left_join(daily_steps) %>%
+  mutate(step_difference = step_total - total_steps)
+tibble(steps_verify)
+
+#Calculating the Min, Max, and Total Differences
+difference_totals_calories <- sum(calories_verify$calorie_difference)
+minimum_calorie_difference <- min(calories_verify$calorie_difference)
+maximum_calorie_difference <- max(calories_verify$calorie_difference)
+difference_totals_steps <- sum(steps_verify$step_difference)
+minimum_step_difference <- min(steps_verify$step_difference)
+maximum_step_difference <- max(steps_verify$step_difference)
+difference_totals_final <- data.frame(
+  difference_totals_calories,
+  minimum_calorie_difference,
+  maximum_calorie_difference,
+  difference_totals_steps,
+  minimum_step_difference,
+  maximum_step_difference
+)
+difference_totals <- pivot_longer(difference_totals_final, cols = contains("differ"), names_to = "type", values_to = "amount")
+tibble(difference_totals_final)
+
+```
+
+**Note: Significant differences in the primary dataset between the daily and hourly totals may affect the analysis below.**
+
+### **Analysis**
+
+#### Comparing Primary to Secondary Datasets
+
+Before combining the datasets for an overall analysis, I wanted to see how the data compared. Since the datasets have vastly different date ranges, I calculated the average for comparison and then created visuals.
+
+Note: All code for the graphs can be found in the Appendix.
+
+```{r Steps Mean, echo=FALSE, message=FALSE, warning=FALSE}
+#Calculating Mean for Steps
+mm_primary_hourly_steps <- data.frame(
+  hour = c(0:23), 
+  mean = fmean(hourly_steps$step_total, g = hourly_steps$hour, na.rm=TRUE))
+
+mm_secondary_hourly_steps <- data.frame(
+  hour = c(0:23), 
+  mean = fmean(filtered_lifesnap_hourly$steps, g = filtered_lifesnap_hourly$hour, na.rm=TRUE))
+
+mm_primary_daily_steps <- daily_steps %>%
+  group_by(day) %>%
+  summarise(mean = mean(step_total, na.rm = TRUE))
+
+mm_secondary_daily_steps <- filtered_lifesnap_daily %>% 
+    group_by(day) %>%
+  summarise(mean = mean(steps, na.rm = TRUE))
+
+```
+
+```{r Calories Mean, echo=FALSE, message=FALSE, warning=FALSE}
+#Calculating Mean for Calories
+mm_primary_hourly_calories <- data.frame(
+  hour = c(0:23), 
+  mean = fmean(hourly_calories$calories, g = hourly_calories$hour, na.rm=TRUE))
+
+mm_secondary_hourly_calories <- data.frame(
+  hour = c(0:23), 
+  mean = fmean(filtered_lifesnap_hourly$calories, g = filtered_lifesnap_hourly$hour, na.rm=TRUE))
+
+mm_primary_daily_calories <- daily_calories %>%
+  group_by(day) %>%
+  summarise(mean = mean(calories, na.rm = TRUE))
+
+mm_secondary_daily_calories <- filtered_lifesnap_daily %>% 
+    group_by(day) %>%
+  summarise(mean = mean(calories, na.rm = TRUE))
+
+```
+
+```{r Sleep Mean, echo=FALSE, message=FALSE, warning=FALSE}
+#Calculating Mean for Sleep
+mm_primary_daily_sleep <- daily_sleep %>%
+  group_by(day) %>%
+  summarise(mean = mean(minutes_asleep, na.rm = TRUE))
+
+mm_secondary_daily_sleep <- filtered_lifesnap_daily %>% 
+    group_by(day) %>%
+  summarise(mean = mean(minutes_asleep, na.rm = TRUE))
+
+```
+
+```{r Heart rate Mean, echo=FALSE, message=FALSE, warning=FALSE}
+#Calculating Mean for Heart rate
+mm_primary_hourly_heartrate <- data.frame(
+  hour = c(0:23), 
+  mean = fmean(heartrate$bpm, g = heartrate$hour, na.rm=TRUE))
+
+mm_secondary_hourly_heartrate <- data.frame(
+  hour = c(0:23), 
+  mean = fmean(filtered_lifesnap_hourly$bpm, g = filtered_lifesnap_hourly$hour, na.rm=TRUE))
+
+mm_primary_daily_heartrate <- daily_heartrate %>%
+  group_by(day) %>%
+  summarise(mean = mean(bpm, na.rm = TRUE))
+
+mm_secondary_daily_heartrate <- filtered_lifesnap_daily %>% 
+    group_by(day) %>%
+  summarise(mean = mean(bpm, na.rm = TRUE))
+
+```
+
+```{r Primary vs Secondary Steps Plots, echo=FALSE, message=FALSE, warning=FALSE}
+#Creating a data.frame for the Day Display
+xp <- list('Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday')
+
+#Primary vs Secondary Step Plots
+daily1 <- ggplot(mapping = aes(x = hour, y = mean)) + 
+  geom_col(data = mm_secondary_hourly_steps, aes(fill=mean)) +
+  scale_fill_gradient(low = "slateblue", high = "firebrick1", name = "Steps", guide = guide_legend(reverse = TRUE, order =1)) +
+  geom_col(data = mm_primary_hourly_steps, aes(alpha =0.5)) +
+  scale_alpha_continuous(name = "Primary", labels = "  ", guide_legend(order =2)) +
+  geom_point(data =mm_primary_hourly_steps, aes(x=hour)) +
+  ggtitle("Average Hourly Steps",
+          subtitle = "Primary vs Secondary Datatset")  +
+  scale_x_continuous(breaks = seq(0,23 , by = 6)) +
+  xlab("Hour of the Day (24HR)") +
+  ylab("Average Steps") +
+  coord_cartesian(ylim = c(0, 850)) +
+  theme(legend.key.size = unit(.5, 'cm'))
+
+hourly1 <- ggplot(mapping = aes(x = factor(day, level=xp), y = mean)) + 
+  geom_col(data = mm_secondary_daily_steps, aes(fill=day)) +
+  scale_fill_manual(values = c('firebrick1', 'chocolate1', 'khaki',  'mediumseagreen', 'slateblue',  'mediumorchid', 'palevioletred'), name = "Steps", guide = guide_legend(reverse = FALSE, order =1), limits=xp) +
+  geom_col(data = mm_primary_daily_steps, aes(alpha=.5)) +
+  scale_alpha_continuous(name = "Primary", labels = "  ", guide_legend(order =2)) +
+  geom_point(data =mm_primary_daily_steps, aes(x=day)) +
+  ggtitle("Average Daily Steps",
+          subtitle = "Scondary Datatset") +
+  xlab("Day of the Week") +
+  ylab("Average Steps") +
+  coord_cartesian(ylim = c(0, 10000)) +
+  theme(legend.key.size = unit(.5, 'cm'))
+daily1 / hourly1
+
+```
+
+Notes:
+
+-   As you can see, the secondary dataset users were taking more steps, but compared to the calories below, this did not translate to burning more calories. The cause for this would need further study and is outside this project's scope. <br> <br>
+
+```{r Primary vs Secondary Calories Plots, echo=FALSE, message=FALSE, warning=FALSE}
+#Primary vs Secondary Calories Plots
+daily2 <- ggplot(mapping = aes(x = hour, y = mean)) + 
+  geom_col(data = mm_primary_hourly_calories, aes(fill=mean)) +
+  scale_fill_gradient(low = "deepskyblue", high = "indianred2", name = "Calories", guide = guide_legend(reverse = TRUE, order =1)) +
+  geom_col(data = mm_secondary_hourly_calories, aes(alpha =0.5)) +
+  scale_alpha_continuous(name = "Secondary", labels = "  ", guide_legend(order =2)) +
+  geom_point(data =mm_secondary_hourly_calories, aes(x=hour)) +
+  ggtitle("Average Hourly Calories",
+          subtitle = "Primary vs. Secondary Datatset")  +
+  xlab("Hour of the Day (24HR)") +
+  ylab("Average Calories") +
+  scale_x_continuous(breaks = seq(0,23 , by = 6)) +
+  coord_cartesian(ylim = c(0, 120)) +
+  theme(legend.key.size = unit(.5, 'cm'))
+
+hourly2 <- ggplot(mapping = aes(x = factor(day, level=xp), y = mean)) + 
+  geom_col(data = mm_primary_daily_calories, aes(fill=day)) +
+  scale_fill_manual(values = c('indianred2', 'goldenrod2', 'lightgoldenrod2', 'seagreen2', 'deepskyblue', 'magenta3', 'maroon1'), name = "Calories", guide = guide_legend(reverse = FALSE, order =1), limits=xp) +
+  geom_col(data = mm_secondary_daily_calories, aes(alpha=.5)) +
+  scale_alpha_continuous(name = "Secondary", labels = "  ", guide_legend(order =2)) +
+  geom_point(data =mm_secondary_daily_calories, aes(x=day)) +
+  ggtitle("Average Daily Calories", subtitle = "Primary vs Secondary Datatset")  +
+  xlab("Day of the Week") +
+  ylab("Average Calories") +
+  coord_cartesian(ylim = c(0, 2500)) +
+  theme(legend.key.size = unit(.5, 'cm'))
+daily2 / hourly2
+
+```
+
+Notes:
+
+-   The hourly comparisons for both steps and calories show that the active periods during the day follow roughly the same patterns: activity starts around 6 am, dips after lunch, peaks around dinner time, and then tapers off during the evening and night. The daily comparison for steps has Saturday being the highest day, but the remaining days do not correlate.
+-   The daily comparison for calories shows that they are even across all the days, with the primary dataset being between 200 calories from the highest to the lowest and the secondary dataset being between 80 calories from the highest to the lowest.
+
+<br> <br>
+
+```{r Primary vs Secondary Sleep Plots, echo=FALSE, message=FALSE, warning=FALSE, fig.height=2.5, fig.width=7}
+#Primary vs Secondary Sleep Plot
+daily4 <- ggplot(mapping = aes(x = factor(day, level=xp), y = mean)) + 
+  geom_col(data = mm_primary_daily_sleep, aes(fill=day)) +
+  scale_fill_manual(values = c('tomato', 'chocolate2', 'gold2', 'springgreen3', 'steelblue2', 'plum3', 'hotpink2'), name = "Calories", guide = guide_legend(reverse = FALSE, order =1), limits=xp) +
+  geom_col(data = mm_secondary_daily_sleep, aes(alpha=.5)) +
+  scale_alpha_continuous(name = "Secondary", labels = "  ", guide_legend(order =2)) +
+  geom_point(data =mm_secondary_daily_sleep, aes(x=day)) +
+  ggtitle("Average Daily Sleep",
+          subtitle = "Scondary Datatset") +
+  xlab("Day of the Week") +
+  ylab("Average Minutes Asleep") +
+  coord_cartesian(ylim = c(0, 475)) +
+  theme(legend.key.size = unit(.5, 'cm'))
+daily4 
+
+```
+
+Notes:
+
+-   The daily comparison for sleep seems consistent between both datasets, but the measurement is in minutes. The range of difference overall is 385 (secondary) to 453 (primary). The lowest day in the primary dataset is the 3rd highest in the secondary set. <br> <br>
+
+```{r Primary vs Secondary Heart rate Plots, echo=FALSE, message=FALSE, warning=FALSE}
+#Primary vs Secondary Heart rate Plots
+daily3 <- ggplot(mapping = aes(x = hour, y = mean)) + 
+  geom_col(data = mm_secondary_hourly_heartrate, aes(fill=mean)) +
+  scale_fill_gradient(low = "yellow", high = "red", name = "Steps", guide = guide_legend(reverse = TRUE, order =1)) +
+  geom_col(data = mm_primary_hourly_heartrate, aes(alpha =0.5)) +
+  scale_alpha_continuous(name = "Primary", labels = "  ", guide_legend(order =2)) +
+  geom_point(data =mm_primary_hourly_heartrate, aes(x=hour)) +
+  ggtitle("Average Hourly Heart Rate",
+          subtitle = "Secondary Datatset")  +
+  scale_x_continuous(breaks = seq(0,23 , by = 6)) +
+  xlab("Hour of the Day (24HR)") +
+  ylab("Average Heart Rate") +
+  coord_cartesian(ylim = c(0, 90)) +
+  theme(legend.key.size = unit(.5, 'cm'))
+
+hourly3 <- ggplot(mapping = aes(x = factor(day, level=xp), y = mean)) + 
+  geom_col(data = mm_secondary_daily_heartrate, aes(fill=day)) +
+  scale_fill_manual(values = c('red', 'orange', 'yellow', 'green', 'blue', 'violet', 'pink'), name = "Steps", guide = guide_legend(reverse = FALSE, order =1), limits=xp) +
+  geom_col(data = mm_primary_daily_heartrate, aes(alpha=.5)) +
+  scale_alpha_continuous(name = "Primary", labels = "  ", guide_legend(order =2)) +
+  geom_point(data =mm_primary_daily_heartrate, aes(x=day)) +
+  ggtitle("Average Daily Heart Rate",
+          subtitle = "Primary vs Scondary Datatset") +
+  xlab("Day of the Week") +
+  ylab("Average Heart Rate") +
+  coord_cartesian(ylim = c(0, 85)) +
+  theme(legend.key.size = unit(.5, 'cm'))
+daily3 / hourly3
+
+```
+
+Notes:
+
+-   The comparisons of heart rate are consistent with both datasets. <br> <br>
+
+#### Comparing Overall (Combined) Data
+
+Now that we understand the individual datasets, we can combine them to complete our overall analysis. Let's look at how the minutes asleep affects the calories, steps, and heart rate.
+
+```{r Combine Daily datasets , echo=FALSE, message=FALSE, warning=FALSE}
+#Combine Daily Datasets
+daily_calories_filtered_lifesnap <- filtered_lifesnap_daily %>%
+  select(id, date, calories, day)
+combined_daily_calories <- rbind(daily_calories, daily_calories_filtered_lifesnap)
+
+hourly_calories_filtered_lifesnap <- filtered_lifesnap_hourly %>%
+  select(id, activity_hour=hour, calories, date, hour=hour)
+combined_hourly_calories <- rbind(hourly_calories, hourly_calories_filtered_lifesnap)
+
+daily_steps_filtered_lifesnap <- filtered_lifesnap_daily %>%
+  select(id, date, step_total=steps, day)
+combined_daily_steps <- rbind(daily_steps, daily_steps_filtered_lifesnap)
+
+hourly_steps_filtered_lifesnap <- filtered_lifesnap_hourly %>%
+  select(id, activity_hour=hour, step_total=steps, date, hour=hour)
+combined_hourly_steps <- rbind(hourly_steps, hourly_steps_filtered_lifesnap)
+
+daily_sleep_filtered_lifesnap <- filtered_lifesnap_daily %>%
+  select(id, sleep_day=day, total_sleep_records=minutes_asleep, minutes_asleep=minutes_asleep, total_time_in_bed=minutes_asleep, date, day=day)
+combined_daily_sleep <- rbind(daily_sleep, daily_sleep_filtered_lifesnap)
+
+daily_heartrate_filtered_lifesnap <- filtered_lifesnap_daily %>%
+  select(id, date, bpm, day)
+combined_daily_heartrate <- rbind(daily_heartrate, daily_heartrate_filtered_lifesnap)
+
+hourly_heartrate_filtered_lifesnap <- filtered_lifesnap_hourly %>%
+  select(id, time=hour, bpm, date, hour=hour, day=date)
+combined_hourly_heartrate <- rbind(hourly_heartrate, hourly_heartrate_filtered_lifesnap)
+
+```
+
+```{r Compare Total Sleep to Calories Steps and Heart rate, echo=FALSE, message=FALSE, warning=FALSE, fig.height=7, fig.width=14}
+#Compare Total Sleep to Calories, Steps, and Heart Rate
+combined_daily_sleep_calories <- merge(combined_daily_sleep, combined_daily_calories, by = c("id", "date"))
+combined_daily_sleep_steps <- merge(combined_daily_sleep, combined_daily_steps, by=c("id", "date"))
+combined_daily_sleep_heartrate <- merge(combined_daily_sleep, combined_daily_heartrate, by = c("id", "date"))
+combined_daily_sleep_heartrate = rename(combined_daily_sleep_heartrate, "day" = "day.x")
+
+sleep1 <-  
+  ggplot(data=combined_daily_sleep_steps, aes(x=step_total, y=minutes_asleep)) +
+  geom_point(colour = "mediumseagreen", alpha = .3) +
+  geom_smooth(colour = "mediumseagreen", linewidth =2) +
+  ggtitle("Sleep vs. Steps",
+          subtitle = "Daily") +
+  xlab("Total Steps") +
+  ylab("Minutes Asleep")  +
+  coord_cartesian(ylim = c(0, 480), xlim = c(0, 20000))
+
+sleep2 <- ggplot(data=combined_daily_sleep_calories, aes(x=calories, y=minutes_asleep)) +
+  geom_point(color = "goldenrod2", alpha =.3) +
+  geom_smooth(color = 'goldenrod2', linewidth =2) +
+  ggtitle("Sleep vs. Calories",
+          subtitle = "Daily") +
+  xlab("Total Calories") +
+  ylab("Minutes Asleep") +
+  coord_cartesian(ylim = c(0, 480), xlim = c(1000, 4000))
+  
+sleep3 <- ggplot(data=combined_daily_sleep_heartrate, aes(x=bpm, y=minutes_asleep)) +
+  geom_point(color = 'red', alpha =.3) +
+  geom_smooth(color = 'red') +
+  ggtitle("Sleep vs. Heart Rate",
+          subtitle = "Daily") +
+  xlab("Heart Rate") +
+  ylab("Minutes Asleep") +
+  coord_cartesian(ylim = c(0, 480), xlim = c(60, 100))
+sleep1 +sleep2 +sleep3 
+
+```
+
+Notes:
+
+-   Each graph is set to an 8-hour window for sleep. The average user got around 400 minutes of sleep (6 hours and 40 minutes). There is no data for hourly sleep.
+-   The number of minutes asleep did not drastically affect the number of steps taken, but there is a slight decrease in steps the closer users got to a total of 8 hours of sleep.
+-   It is clear that the number of minutes asleep did not change how many calories were burned.
+-   The comparison between sleep and heart rate does show that more sleep lowers their heart rate. <br> <br>
+
+Now, let's see how these graphs break down by day to see if there is any correlation.
+
+```{r Compare Sleep By Day to Calories Steps and Heart rate, echo=FALSE, message=FALSE, warning=FALSE, fig.height = 10, fig.width = 20}
+#Compare Sleep by Day to Calories, Steps, and Heart Rate
+sleep4 <- combined_daily_sleep_steps %>% 
+  ggplot(aes(x = step_total, y = minutes_asleep, color = day.x, fill = day.x)) +
+  geom_point(show.legend = FALSE) +
+  geom_smooth( show.legend = FALSE) +
+  facet_wrap(~factor(day.x, levels = xp), ncol=7) +
+  scale_fill_manual(values = c('tomato', 'chocolate2', 'gold2', 'springgreen3', 'steelblue2', 'plum3', 'hotpink2'), limits=xp) +
+  scale_color_manual(values = c('tomato', 'chocolate2', 'gold2', 'springgreen3', 'steelblue2', 'plum3', 'hotpink2'), limits=xp) +
+  ggtitle("Sleep vs Steps",
+          subtitle = "Daily") +
+  xlab("Total Steps") +
+  ylab("Minutes Asleep")  +
+  coord_cartesian(ylim = c(00, 480), xlim = c(0, 20000)) 
+
+sleep5 <- combined_daily_sleep_calories %>% 
+ ggplot(aes(x = calories, y = minutes_asleep, colour = day.x, fill = day.x)) +
+  geom_point(show.legend = FALSE) +
+  geom_smooth( show.legend = FALSE) +
+  facet_wrap(~factor(day.x, levels = xp), ncol=7) +
+  scale_fill_manual(values = c('tomato', 'chocolate2', 'gold2', 'springgreen3', 'steelblue2', 'plum3', 'hotpink2'), limits=xp) +
+  scale_color_manual(values = c('tomato', 'chocolate2', 'gold2', 'springgreen3', 'steelblue2', 'plum3', 'hotpink2'), limits=xp) +
+  ggtitle("Sleep vs. Calories",
+          subtitle = "Daily") +
+  xlab("Total Calories") +
+  ylab("Minutes Asleep") +
+  coord_cartesian(ylim = c(200, 480), xlim = c(1000, 4000))
+  
+sleep6 <- combined_daily_sleep_heartrate %>% 
+  ggplot(aes(x = bpm, y = minutes_asleep, colour = day, fill = day)) +
+  geom_point(show.legend = FALSE) +
+  geom_smooth( show.legend = FALSE) +
+  facet_wrap(~factor(day, levels = xp), ncol=7) +
+  scale_fill_manual(values = c('tomato', 'chocolate2', 'gold2', 'springgreen3', 'steelblue2', 'plum3', 'hotpink2'), limits=xp) +
+  scale_color_manual(values = c('tomato', 'chocolate2', 'gold2', 'springgreen3', 'steelblue2', 'plum3', 'hotpink2'), limits=xp) +
+  ggtitle("Sleep vs. Heart Rate",
+          subtitle = "Daily") +
+  xlab("Heart Rate") +
+  ylab("Minutes Asleep") +
+  coord_cartesian(ylim = c(200, 480), xlim = c(60, 100))
+sleep4 /sleep5 / sleep6
+
+```
+
+Notes:
+
+-   There are no noticeable trends by day that differ from the overall daily analysis.
+
+<br><br> Comparing how calories correlate to steps and heart rate.
+
+```{r Compare Calories to Steps and Heart Rate, echo=FALSE, message=FALSE, warning=FALSE}
+#Compare Calories to Steps and Heart Rate
+combined_daily_calories_steps <- merge(combined_daily_calories, combined_daily_steps, by ="id")
+combined_hourly_calories_steps <- cbind(combined_hourly_calories, combined_hourly_steps)
+combined_hourly_calories_steps <- combined_hourly_calories_steps %>%  clean_names()
+combined_daily_calories_heartrate <- merge(combined_daily_calories, combined_daily_heartrate, by =c("id", "date"))
+
+calories1 <- ggplot(mapping = aes(x=step_total, y=calories, color=calories)) +
+  geom_smooth(data=combined_daily_calories_steps, aes(color="Daily", fill="Daily")) +
+  geom_smooth(data = combined_hourly_calories_steps, aes(color = "Hourly", fill="Hourly")) +
+  scale_colour_manual(name=" ", values=c("magenta3", "deepskyblue")) +
+  scale_fill_manual(" ", values = c("magenta3", "deepskyblue"))  +
+  ggtitle("Calories vs. Steps",
+          subtitle = "Daily and Hourly") +
+  xlab("Total Steps") +
+  ylab("Calories") 
+
+calories2 <- ggplot(mapping = aes(x=bpm, y=calories, color=calories)) +
+  geom_smooth(data=combined_daily_calories_heartrate, aes(color="Daily", fill="Daily")) +  
+  geom_smooth(data = filtered_lifesnap_hourly, aes(color = "Secondary Hourly", fill="Secondary Hourly")) +
+  scale_colour_manual(name=" ", values=c("magenta3", "seagreen2"), label = ~str_wrap(.x, width = 10)) +
+  scale_fill_manual(" ", values = c("magenta3", "seagreen2"), label = ~str_wrap(.x, width = 10))  +
+  ggtitle("Calories vs. Heart Rate",
+          subtitle = "Daily and Secondary Hourly") +
+  xlab("Heart Rate") +
+  ylab("Calories") 
+calories1 / calories2
+
+```
+
+Notes:
+
+-   As expected, the more steps taken results in more calories burned.
+-   The hourly line indicates that the number of steps taken results in a steeper calorie burn.
+-   The heart rate increases as the calories increase. This is also expected as workouts increase the heart rate and the amount of calories burned.
+-   The secondary hourly line shows that the heart rate gets high but isn't burning as many calories. This would be interesting to explore further in the future.
+<br><br>
+
+Finally, let's compare how steps and heart rate correlate.
+
+```{r Compare Steps and Heart Rate, echo=FALSE, message=FALSE, warning=FALSE}
+#Compare Steps and Heart Rate 
+combined_daily_steps_heartrate <- merge(combined_daily_steps, combined_daily_heartrate, by =c("id", "date"))
+filtered_lifesnap_hourly <- rename(filtered_lifesnap_hourly, "step_total" = "steps")
+
+ggplot(mapping = aes(x=step_total, y=bpm, color=bpm)) +
+  geom_smooth(data=combined_daily_steps_heartrate, aes(color="Daily", fill="Daily")) +
+  geom_smooth(data =filtered_lifesnap_hourly, aes(color = "Secondary Hourly", fill="Secondary Hourly")) +
+  scale_colour_manual(name=" ", values=c("magenta3", "seagreen2"), label = ~str_wrap(.x, width = 10)) +
+  scale_fill_manual(" ", values = c("magenta3", "seagreen2"), label = ~str_wrap(.x, width = 10))  +
+  ggtitle("Steps vs Heart Rrate",
+          subtitle = "Daily and Secondary Hourly") +
+  xlab("Total Steps") +
+  ylab("Heart Rate") 
+
+```
+
+Notes:
+-   Heart rate also increases with the number of steps taken. Since this is daily (there is no hourly information on the primary dataset), it would also be informative to have the steps vs. heart rate for comparison. I suspect that the hours of sleep would be decreased for both the heart rate and the steps, and it would highlight the hours when the majority of activity occurs.
+
+### **Conculsions**
+
+#### Key Observations
+
+- Most of the data indicates that patterns have mostly stayed the same in the years between the data collected. The more recent data (secondary) has an edge on heart rate and steps, while the primary data has an advantage on calories and sleep.
+-   Saturday is collectively the best day for steps and calories, while Sunday is the best for sleep and heart rate.
+-   Sleep is critical in keeping a low heart rate and having higher steps and calories burned.
+-   The pattern of activity begins around 6 am and ends between 7 and 8 pm.
+
+#### Client Recommendations
+
+-   Since sleep was an overall effector, the Bellabeat app should focus on having the users set a sleep schedule that would allow for close to 8 hours per night. 
+-   The Bellabeat app should focus on its suggested reminders for steps and calories between 6 am and 8 pm, as this is when the most activity occurs. It should also concentrate on reminders for activity on Saturday while offering relaxation and meditation offerings on Sunday.
+-   Menstrual data is a significant factor in the Bellabeat app, but it was not a part of this study. Additional analysis would be needed to determine how a user's menstrual cycle affects the daily sleep and activity recorded.
+-   Further research would be needed to see how sleep affects the hourly activity of the users. It would also be helpful to compile data on why the secondary users had fewer calories burned overall for the number of steps and heart rate stayed high.
+
+#### Case Study Thoughts
+
+-   This was a great case study to perform. I already see room for improvement in future projects, but overall this was a great learning experience. I enjoyed learning and utilizing R for this project and look forward to many more future projects with it.
+-   I would appreciate any feedback as I continue to improve. Thank you for taking the time to read this case study.
+
+### Appendix: All code for this report
+
+```{r ref.label=knitr::all_labels(), echo=TRUE, eval=FALSE}
+```
